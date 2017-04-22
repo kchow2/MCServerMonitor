@@ -5,8 +5,10 @@
 #pragma comment(lib, "Winmm.lib")
 
 NOTIFYICONDATA iconData;
+HWND hwnd = NULL;
 HMENU popupMenu;
 char readBuffer[32768];
+bool shouldQuit = false;
 
 #define MSG_TRAY_ICON WM_USER+1
 #define ID_TRAY_ICON 1001
@@ -93,14 +95,18 @@ bool handleInput(char *buf){
 		if (strstr(msg, "joined the game") != 0){
 			sendTrayNotification(msg);
 		}
-		if (strstr(msg, "left the game") != 0){
+		else if (strstr(msg, "left the game") != 0){
 			sendTrayNotification(msg);
 		}
-		if (strstr(msg, "Starting minecraft server version") != 0){
-			sendTrayNotification(msg);
+		//else if (strstr(msg, "Starting minecraft server version") != 0){
+		//	sendTrayNotification(msg);
+		//}
+		else if (strstr(msg, "Done (") != 0){
+			sendTrayNotification("Server up.");
 		}
-		if (strstr(msg, "Stopping server") != 0){
+		else if (strstr(msg, "Stopping server") != 0){
 			sendTrayNotification(msg);
+			SetTimer(hwnd, 0, 3000, 0);	//When the server stops, this program exits soon afterward.
 			return false;
 		}
 
@@ -128,6 +134,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam){
 	case WM_DESTROY:
 		Shell_NotifyIcon(NIM_DELETE, &iconData);
 		break;
+	case WM_TIMER:
+		SendMessage(hwnd, WM_CLOSE, 0, 0);	//When the server stops, this program exits soon afterward.
+		break;
 	case MSG_TRAY_ICON:
 		if (LOWORD(lparam) == WM_RBUTTONDOWN){
 			
@@ -153,11 +162,9 @@ DWORD WINAPI threadProc(LPVOID parameter){
 	TCHAR fileName[] = TEXT("logs/latest.log");
 	char currentDir[MAX_PATH];
 	GetCurrentDirectoryA(MAX_PATH, currentDir);
-	char welcomeMessage[512];
-	sprintf(welcomeMessage, "Starting up in directory '%s'.", currentDir);
-	sendTrayNotification(welcomeMessage);
-
-	bool shouldQuit = false;
+	//char welcomeMessage[512];
+	//sprintf(welcomeMessage, "Starting up in directory '%s'.", currentDir);
+	//sendTrayNotification(welcomeMessage);
 
 	HANDLE hFile = CreateFile(fileName, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
 	if (hFile == INVALID_HANDLE_VALUE){
@@ -181,7 +188,8 @@ DWORD WINAPI threadProc(LPVOID parameter){
 			char* linePtr = strtok(readBuffer, "\n");	//break input up into lines
 			while (linePtr){
 				if (!handleInput(linePtr)){
-					//shouldQuit = true;
+					shouldQuit = true;
+					SendMessage(hwnd, WM_CLOSE, 0, 0);
 					break;
 				}
 				linePtr = strtok(NULL, "\n");
@@ -205,7 +213,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	wc.hbrBackground = (HBRUSH)COLOR_WINDOW;
 	wc.lpfnWndProc = WndProc;
 	RegisterClassEx(&wc);
-	HWND hwnd = CreateWindowEx(0, TEXT("MCSERVERMON"), TEXT("Dummy"), 0, 100,100,100,100,HWND_DESKTOP,0,GetModuleHandle(0), 0);//WS_VISIBLE|WS_SYSMENU
+	CreateWindowEx(0, TEXT("MCSERVERMON"), TEXT("Dummy"), 0, 100,100,100,100,HWND_DESKTOP,0,GetModuleHandle(0), 0);//WS_VISIBLE|WS_SYSMENU
 
 	DWORD threadId;
 	HANDLE hThread = CreateThread(0, 0, threadProc, 0, 0, &threadId);
@@ -214,7 +222,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	}
 
 	MSG msg;
-	while (GetMessage(&msg, 0, 0, 0) > 0){
+	while (!shouldQuit && GetMessage(&msg, 0, 0, 0) > 0){
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
 	}
